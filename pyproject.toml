@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sws-sdk"
+dynamic = ["version"]
+description = "Official Python SDK for the SWS cloud platform"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Savannaa Cloud" }]
+keywords = ["cloud", "infrastructure", "sws", "savannaa"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = [
+    "httpx>=0.25",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "pytest-cov",
+    "respx>=0.21",
+    "ruff",
+    "mypy",
+]
+
+[project.urls]
+Homepage = "https://savannaa.com"
+Documentation = "https://savannaa.com/docs"
+Repository = "https://github.com/savannaacloud/sws-sdk"
+Issues = "https://github.com/savannaacloud/sws-sdk/issues"
+
+[tool.hatch.version]
+path = "sws/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["sws"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
