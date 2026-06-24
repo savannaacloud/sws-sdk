@@ -5,11 +5,7 @@ Official Python SDK for the **SWS** cloud platform.
 ## Install
 
 ```bash
-# Once published to PyPI:
 pip install sws-sdk
-
-# Available now (installs the tagged release straight from GitHub):
-pip install "git+https://github.com/savannaacloud/sws-sdk@v0.1.0"
 ```
 
 ## Quickstart
