@@ -70,7 +70,7 @@ class Client:
 
         from sws import Client
 
-        client = Client(api_key="sws_...", region="ng-lagos-1")
+        client = Client(api_key="ctk_...", region="ng-lagos-1")
         for vm in client.compute.list_instances():
             print(vm.name, vm.status)
 

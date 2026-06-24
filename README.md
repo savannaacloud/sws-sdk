@@ -5,7 +5,11 @@ Official Python SDK for the **SWS** cloud platform.
 ## Install
 
 ```bash
+# Once published to PyPI:
 pip install sws-sdk
+
+# Available now (installs the tagged release straight from GitHub):
+pip install "git+https://github.com/savannaacloud/sws-sdk@v0.1.0"
 ```
 
 ## Quickstart
@@ -13,7 +17,7 @@ pip install sws-sdk
 ```python
 from sws import Client
 
-client = Client(api_key="sws_...", region="ng-lagos-1")
+client = Client(api_key="ctk_...", region="ng-lagos-1")
 
 # List virtual machines
 for vm in client.compute.list_instances():
