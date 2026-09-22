@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 
 from sws._version import __version__
+from sws.credentials import MISSING_MESSAGE, resolve
 from sws.exceptions import (
     APIError,
     AuthenticationError,
@@ -70,12 +71,15 @@ class Client:
 
         from sws import Client
 
-        client = Client(api_key="ctk_...", region="ng-lagos-1")
+        client = Client()            # reads SWS_API_KEY from the environment
         for vm in client.compute.list_instances():
             print(vm.name, vm.status)
 
-    Auth resolution order: ``api_key`` argument → ``SWS_API_KEY`` env var.
+    Never hard-code a key. Resolution order: ``api_key`` argument → ``SWS_API_KEY`` →
+    the credentials file ``sws auth login`` writes (``~/.config/sws/credentials``,
+    ``$SWS_PROFILE`` selects the profile; the plain ``~/.config/sws/token`` is read too).
     Region: ``region`` argument → ``SWS_REGION`` env var → ``ng-lagos-1``.
+    Base URL: ``base_url`` argument → ``SWS_API_URL`` (or the older ``SWS_BASE_URL``).
     """
 
     def __init__(
@@ -87,14 +91,12 @@ class Client:
         timeout: float = DEFAULT_TIMEOUT,
         verify_tls: bool = True,
     ) -> None:
-        api_key = api_key or os.environ.get("SWS_API_KEY")
+        api_key, region, base_url, source = resolve(api_key, region, base_url)
         if not api_key:
-            raise AuthenticationError(
-                401,
-                "missing api_key (pass to Client(api_key=...) or set SWS_API_KEY env var)",
-            )
-        region = region or os.environ.get("SWS_REGION") or DEFAULT_REGION
-        base_url = base_url or os.environ.get("SWS_BASE_URL") or DEFAULT_BASE_URL
+            raise AuthenticationError(401, MISSING_MESSAGE)
+        self.credential_source = source   # "argument", "SWS_API_KEY", or the file it came from
+        region = region or DEFAULT_REGION
+        base_url = base_url or DEFAULT_BASE_URL
 
         self._http = httpx.Client(
             base_url=base_url,
