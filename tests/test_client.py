@@ -17,24 +17,24 @@ from sws import (
 
 @pytest.fixture
 def client() -> Client:
-    return Client(api_key="sws_test", region="ng-lagos-1", base_url="https://api.example")
+    return Client(api_key="ctk_test", region="ng-lagos-1", base_url="https://api.example")
 
 
 @respx.mock
 def test_auth_header_and_region_sent(client: Client) -> None:
-    route = respx.get("https://api.example/api/compute/servers").mock(
+    route = respx.get("https://api.example/api/v1/compute/servers").mock(
         return_value=httpx.Response(200, json=[]),
     )
     client.compute.list_instances()
     req = route.calls.last.request
-    assert req.headers["authorization"] == "Bearer sws_test"
+    assert req.headers["authorization"] == "Bearer ctk_test"
     assert req.headers["x-region"] == "ng-lagos-1"
     assert req.headers["user-agent"].startswith("sws-sdk-python/")
 
 
 @respx.mock
 def test_list_instances_parses_flavor_as_plan(client: Client) -> None:
-    respx.get("https://api.example/api/compute/servers").mock(
+    respx.get("https://api.example/api/v1/compute/servers").mock(
         return_value=httpx.Response(
             200,
             json=[
@@ -57,7 +57,7 @@ def test_list_instances_parses_flavor_as_plan(client: Client) -> None:
 def test_create_instance_translates_plan_to_flavor_id(client: Client) -> None:
     """SDK takes ``plan=`` from the caller but sends ``flavor_id`` over
     the wire — the backend hasn't been renamed yet."""
-    route = respx.post("https://api.example/api/compute/servers").mock(
+    route = respx.post("https://api.example/api/v1/compute/servers").mock(
         return_value=httpx.Response(
             201,
             json={"id": "i-2", "name": "web-2", "status": "BUILD"},
@@ -78,7 +78,7 @@ def test_create_instance_translates_plan_to_flavor_id(client: Client) -> None:
 
 @respx.mock
 def test_404_raises_not_found(client: Client) -> None:
-    respx.get("https://api.example/api/compute/servers/missing").mock(
+    respx.get("https://api.example/api/v1/compute/servers/missing").mock(
         return_value=httpx.Response(404, json={"detail": "Not found"})
     )
     with pytest.raises(NotFoundError) as exc:
@@ -88,7 +88,7 @@ def test_404_raises_not_found(client: Client) -> None:
 
 @respx.mock
 def test_403_quota_message_raises_quota_exceeded(client: Client) -> None:
-    respx.post("https://api.example/api/compute/servers").mock(
+    respx.post("https://api.example/api/v1/compute/servers").mock(
         return_value=httpx.Response(
             403, json={"detail": "Quota exceeded for instances: 10/10"}
         )
@@ -99,7 +99,7 @@ def test_403_quota_message_raises_quota_exceeded(client: Client) -> None:
 
 @respx.mock
 def test_401_raises_auth_error(client: Client) -> None:
-    respx.get("https://api.example/api/compute/servers").mock(
+    respx.get("https://api.example/api/v1/compute/servers").mock(
         return_value=httpx.Response(401, json={"detail": "bad token"})
     )
     with pytest.raises(AuthenticationError):
@@ -108,7 +108,7 @@ def test_401_raises_auth_error(client: Client) -> None:
 
 @respx.mock
 def test_422_raises_validation_error(client: Client) -> None:
-    respx.post("https://api.example/api/network/subnets").mock(
+    respx.post("https://api.example/api/v1/network/subnets").mock(
         return_value=httpx.Response(422, json={"detail": "cidr required"})
     )
     with pytest.raises(ValidationError):
@@ -117,7 +117,7 @@ def test_422_raises_validation_error(client: Client) -> None:
 
 @respx.mock
 def test_security_group_rule_payload(client: Client) -> None:
-    route = respx.post("https://api.example/api/network/security-group-rules").mock(
+    route = respx.post("https://api.example/api/v1/network/security-group-rules").mock(
         return_value=httpx.Response(201, json={"id": "r-1"})
     )
     client.network.add_security_group_rule(
@@ -134,7 +134,7 @@ def test_security_group_rule_payload(client: Client) -> None:
 
 @respx.mock
 def test_volume_attach_uses_instance_id(client: Client) -> None:
-    route = respx.post("https://api.example/api/block-storage/volumes/v-1/attach").mock(
+    route = respx.post("https://api.example/api/v1/block-storage/volumes/v-1/attach").mock(
         return_value=httpx.Response(202)
     )
     client.storage.attach_volume("v-1", instance_id="i-9")
@@ -161,3 +161,39 @@ def test_env_var_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
     assert c.region == "ng-abuja-1"
     assert c._http.headers["authorization"] == "Bearer sws_from_env"
     assert c._http.headers["x-region"] == "ng-abuja-1"
+
+
+# ── the /api/v1 pin ────────────────────────────────────────────────────────────
+
+
+@respx.mock
+def test_requests_are_pinned_to_the_versioned_api(client: Client) -> None:
+    """The unversioned alias is deprecated (Sunset 2027-09-22) and the platform's own
+    version policy says first-party SDKs pin /api/v1 — so this SDK must."""
+    route = respx.get("https://api.example/api/v1/compute/servers").mock(
+        return_value=httpx.Response(200, json=[]),
+    )
+    client.compute.list_instances()
+    assert route.called
+    assert route.calls.last.request.url.path.startswith("/api/v1/")
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        "https://savannaa.com",
+        "https://savannaa.com/",
+        "https://savannaa.com/api",
+        "https://savannaa.com/api/v1",
+        "https://savannaa.com/api/v1/",
+    ],
+)
+@respx.mock
+def test_a_base_url_that_already_has_a_prefix_is_not_doubled(given: str) -> None:
+    """GET /api/v1/version publishes base_url as https://savannaa.com/api/v1, so people
+    paste exactly that into SWS_API_URL."""
+    route = respx.get("https://savannaa.com/api/v1/compute/servers").mock(
+        return_value=httpx.Response(200, json=[]),
+    )
+    Client(api_key="ctk_test", base_url=given).compute.list_instances()
+    assert route.called, f"base_url={given} did not reach /api/v1/compute/servers"

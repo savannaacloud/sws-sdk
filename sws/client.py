@@ -38,6 +38,20 @@ DEFAULT_REGION = "ng-lagos-1"
 DEFAULT_TIMEOUT = 30.0
 
 
+def _normalize_base_url(base_url: str) -> str:
+    """Strip an API prefix the caller already supplied.
+
+    ``GET /api/v1/version`` publishes ``base_url`` as ``https://savannaa.com/api/v1``,
+    so people paste that into ``SWS_API_URL``. Without this, every request would go to
+    ``/api/v1/api/v1/...``.
+    """
+    base_url = base_url.rstrip("/")
+    for suffix in ("/api/v1", "/api"):
+        if base_url.endswith(suffix):
+            return base_url[: -len(suffix)]
+    return base_url
+
+
 def _raise_for_status(r: httpx.Response) -> None:
     """Translate non-2xx responses into the SDK exception hierarchy.
 
@@ -79,7 +93,9 @@ class Client:
     the credentials file ``sws auth login`` writes (``~/.config/sws/credentials``,
     ``$SWS_PROFILE`` selects the profile; the plain ``~/.config/sws/token`` is read too).
     Region: ``region`` argument → ``SWS_REGION`` env var → ``ng-lagos-1``.
-    Base URL: ``base_url`` argument → ``SWS_API_URL`` (or the older ``SWS_BASE_URL``).
+    Base URL: ``base_url`` argument → ``SWS_API_URL`` (or the older ``SWS_BASE_URL``);
+    an ``/api`` or ``/api/v1`` suffix on it is accepted and not doubled.
+    Every request is pinned to ``/api/v1`` so a future API version cannot move you.
     """
 
     def __init__(
@@ -96,7 +112,7 @@ class Client:
             raise AuthenticationError(401, MISSING_MESSAGE)
         self.credential_source = source   # "argument", "SWS_API_KEY", or the file it came from
         region = region or DEFAULT_REGION
-        base_url = base_url or DEFAULT_BASE_URL
+        base_url = _normalize_base_url(base_url or DEFAULT_BASE_URL)
 
         self._http = httpx.Client(
             base_url=base_url,
@@ -149,11 +165,11 @@ class Compute(_Resource):
 
     # ── instances ──────────────────────────────────────────────────────
     def list_instances(self) -> list[Instance]:
-        data = self._get("/api/compute/servers") or []
+        data = self._get("/api/v1/compute/servers") or []
         return [Instance.from_api(d) for d in data]
 
     def get_instance(self, instance_id: str) -> Instance:
-        return Instance.from_api(self._get(f"/api/compute/servers/{instance_id}"))
+        return Instance.from_api(self._get(f"/api/v1/compute/servers/{instance_id}"))
 
     def create_instance(
         self,
@@ -182,50 +198,50 @@ class Compute(_Resource):
             payload["security_groups"] = security_groups
         if user_data is not None:
             payload["user_data"] = user_data
-        return Instance.from_api(self._post("/api/compute/servers", json=payload))
+        return Instance.from_api(self._post("/api/v1/compute/servers", json=payload))
 
     def delete_instance(self, instance_id: str) -> None:
-        self._delete(f"/api/compute/servers/{instance_id}")
+        self._delete(f"/api/v1/compute/servers/{instance_id}")
 
     def start_instance(self, instance_id: str) -> None:
-        self._post(f"/api/compute/servers/{instance_id}/start")
+        self._post(f"/api/v1/compute/servers/{instance_id}/start")
 
     def stop_instance(self, instance_id: str) -> None:
-        self._post(f"/api/compute/servers/{instance_id}/stop")
+        self._post(f"/api/v1/compute/servers/{instance_id}/stop")
 
     def reboot_instance(self, instance_id: str, *, hard: bool = False) -> None:
         self._post(
-            f"/api/compute/servers/{instance_id}/reboot",
+            f"/api/v1/compute/servers/{instance_id}/reboot",
             json={"type": "HARD" if hard else "SOFT"},
         )
 
     def resize_instance(self, instance_id: str, *, plan: str) -> None:
         self._post(
-            f"/api/compute/servers/{instance_id}/resize",
+            f"/api/v1/compute/servers/{instance_id}/resize",
             json={"flavor_id": plan},
         )
 
     # ── plans / images / keypairs ─────────────────────────────────────
     def list_plans(self) -> list[Plan]:
-        data = self._get("/api/compute/plans") or []
+        data = self._get("/api/v1/compute/plans") or []
         return [Plan.from_api(d) for d in data]
 
     def list_images(self) -> list[dict]:
-        data = self._get("/api/images") or []
+        data = self._get("/api/v1/images") or []
         return list(data)
 
     def list_keypairs(self) -> list[Keypair]:
-        data = self._get("/api/compute/keypairs") or []
+        data = self._get("/api/v1/compute/keypairs") or []
         return [Keypair.from_api(d) for d in data]
 
     def create_keypair(self, name: str, *, public_key: str | None = None) -> Keypair:
         payload: dict[str, Any] = {"name": name}
         if public_key:
             payload["public_key"] = public_key
-        return Keypair.from_api(self._post("/api/compute/keypairs", json=payload))
+        return Keypair.from_api(self._post("/api/v1/compute/keypairs", json=payload))
 
     def delete_keypair(self, name: str) -> None:
-        self._delete(f"/api/compute/keypairs/{name}")
+        self._delete(f"/api/v1/compute/keypairs/{name}")
 
 
 class NetworkResource(_Resource):
@@ -233,21 +249,21 @@ class NetworkResource(_Resource):
 
     # ── networks ──────────────────────────────────────────────────────
     def list_networks(self) -> list[Network]:
-        data = self._get("/api/network/networks") or []
+        data = self._get("/api/v1/network/networks") or []
         return [Network.from_api(d) for d in data]
 
     def create_network(self, name: str, *, description: str | None = None) -> Network:
         payload: dict[str, Any] = {"name": name}
         if description is not None:
             payload["description"] = description
-        return Network.from_api(self._post("/api/network/networks", json=payload))
+        return Network.from_api(self._post("/api/v1/network/networks", json=payload))
 
     def delete_network(self, network_id: str) -> None:
-        self._delete(f"/api/network/networks/{network_id}")
+        self._delete(f"/api/v1/network/networks/{network_id}")
 
     # ── subnets ───────────────────────────────────────────────────────
     def list_subnets(self) -> list[Subnet]:
-        data = self._get("/api/network/subnets") or []
+        data = self._get("/api/v1/network/subnets") or []
         return [Subnet.from_api(d) for d in data]
 
     def create_subnet(
@@ -269,26 +285,26 @@ class NetworkResource(_Resource):
         }
         if dns_nameservers:
             payload["dns_nameservers"] = dns_nameservers
-        return Subnet.from_api(self._post("/api/network/subnets", json=payload))
+        return Subnet.from_api(self._post("/api/v1/network/subnets", json=payload))
 
     def delete_subnet(self, subnet_id: str) -> None:
-        self._delete(f"/api/network/subnets/{subnet_id}")
+        self._delete(f"/api/v1/network/subnets/{subnet_id}")
 
     # ── security groups ───────────────────────────────────────────────
     def list_security_groups(self) -> list[SecurityGroup]:
-        data = self._get("/api/network/security-groups") or []
+        data = self._get("/api/v1/network/security-groups") or []
         return [SecurityGroup.from_api(d) for d in data]
 
     def create_security_group(self, name: str, *, description: str = "") -> SecurityGroup:
         return SecurityGroup.from_api(
             self._post(
-                "/api/network/security-groups",
+                "/api/v1/network/security-groups",
                 json={"name": name, "description": description},
             )
         )
 
     def delete_security_group(self, group_id: str) -> None:
-        self._delete(f"/api/network/security-groups/{group_id}")
+        self._delete(f"/api/v1/network/security-groups/{group_id}")
 
     def add_security_group_rule(
         self,
@@ -302,7 +318,7 @@ class NetworkResource(_Resource):
         ethertype: str = "IPv4",
     ) -> dict:
         return self._post(
-            "/api/network/security-group-rules",
+            "/api/v1/network/security-group-rules",
             json={
                 "security_group_id": group_id,
                 "direction": direction,
@@ -315,41 +331,41 @@ class NetworkResource(_Resource):
         )
 
     def remove_security_group_rule(self, rule_id: str) -> None:
-        self._delete(f"/api/network/security-group-rules/{rule_id}")
+        self._delete(f"/api/v1/network/security-group-rules/{rule_id}")
 
     # ── public IPs ────────────────────────────────────────────────────
     def list_public_ips(self) -> list[PublicIP]:
-        data = self._get("/api/network/public-ips") or []
+        data = self._get("/api/v1/network/public-ips") or []
         return [PublicIP.from_api(d) for d in data]
 
     def allocate_public_ip(self, *, floating_network_id: str | None = None) -> PublicIP:
         payload: dict[str, Any] = {}
         if floating_network_id:
             payload["floating_network_id"] = floating_network_id
-        return PublicIP.from_api(self._post("/api/network/public-ips", json=payload))
+        return PublicIP.from_api(self._post("/api/v1/network/public-ips", json=payload))
 
     def assign_public_ip(self, ip_id: str, *, instance_id: str) -> None:
         self._post(
-            f"/api/network/public-ips/{ip_id}/associate",
+            f"/api/v1/network/public-ips/{ip_id}/associate",
             json={"instance_id": instance_id},
         )
 
     def unassign_public_ip(self, ip_id: str) -> None:
-        self._post(f"/api/network/public-ips/{ip_id}/disassociate")
+        self._post(f"/api/v1/network/public-ips/{ip_id}/disassociate")
 
     def release_public_ip(self, ip_id: str) -> None:
-        self._delete(f"/api/network/public-ips/{ip_id}")
+        self._delete(f"/api/v1/network/public-ips/{ip_id}")
 
 
 class Storage(_Resource):
     """Block storage volumes."""
 
     def list_volumes(self) -> list[Volume]:
-        data = self._get("/api/block-storage/volumes") or []
+        data = self._get("/api/v1/block-storage/volumes") or []
         return [Volume.from_api(d) for d in data]
 
     def get_volume(self, volume_id: str) -> Volume:
-        return Volume.from_api(self._get(f"/api/block-storage/volumes/{volume_id}"))
+        return Volume.from_api(self._get(f"/api/v1/block-storage/volumes/{volume_id}"))
 
     def create_volume(
         self,
@@ -364,30 +380,30 @@ class Storage(_Resource):
             payload["volume_type"] = type
         if description is not None:
             payload["description"] = description
-        return Volume.from_api(self._post("/api/block-storage/volumes", json=payload))
+        return Volume.from_api(self._post("/api/v1/block-storage/volumes", json=payload))
 
     def delete_volume(self, volume_id: str) -> None:
-        self._delete(f"/api/block-storage/volumes/{volume_id}")
+        self._delete(f"/api/v1/block-storage/volumes/{volume_id}")
 
     def attach_volume(self, volume_id: str, *, instance_id: str) -> None:
         self._post(
-            f"/api/block-storage/volumes/{volume_id}/attach",
+            f"/api/v1/block-storage/volumes/{volume_id}/attach",
             json={"instance_id": instance_id},
         )
 
     def detach_volume(self, volume_id: str) -> None:
-        self._post(f"/api/block-storage/volumes/{volume_id}/detach")
+        self._post(f"/api/v1/block-storage/volumes/{volume_id}/detach")
 
 
 class DatabaseResource(_Resource):
     """Managed database instances (mysql, postgresql, etc.)."""
 
     def list_instances(self) -> list[Database]:
-        data = self._get("/api/database/instances") or []
+        data = self._get("/api/v1/database/instances") or []
         return [Database.from_api(d) for d in data]
 
     def get_instance(self, db_id: str) -> Database:
-        return Database.from_api(self._get(f"/api/database/instances/{db_id}"))
+        return Database.from_api(self._get(f"/api/v1/database/instances/{db_id}"))
 
     def create_instance(
         self,
@@ -412,7 +428,7 @@ class DatabaseResource(_Resource):
         }
         if network_id:
             payload["network_id"] = network_id
-        return Database.from_api(self._post("/api/database/instances", json=payload))
+        return Database.from_api(self._post("/api/v1/database/instances", json=payload))
 
     def delete_instance(self, db_id: str) -> None:
-        self._delete(f"/api/database/instances/{db_id}")
+        self._delete(f"/api/v1/database/instances/{db_id}")
